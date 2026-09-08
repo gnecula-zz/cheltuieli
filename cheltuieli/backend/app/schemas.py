@@ -174,6 +174,7 @@ class DocumentExtractResponse(BaseModel):
     warning: str = ""
     openai_configured: bool
     items: list[ExtractedItem]
+    status: str = "processed"
 
 
 class ConfirmImportRequest(BaseModel):

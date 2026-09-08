@@ -9,16 +9,23 @@ export class ApiError extends Error {
 }
 
 async function parseError(res: Response): Promise<string> {
+  const raw = await res.text();
   try {
-    const data = await res.json();
+    const data = JSON.parse(raw);
     if (typeof data.detail === "string") return data.detail;
     if (Array.isArray(data.detail)) {
       return data.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join(", ");
     }
   } catch {
-    /* ignore */
+    /* HTML from Ingress / Cloudflare */
   }
-  return res.statusText || "Eroare de rețea";
+  if (res.status === 413) {
+    return "Fișierul e prea mare pentru Home Assistant. Reîncearcă; pozele se comprimă automat.";
+  }
+  if (res.status === 502 || res.status === 504 || res.status === 524) {
+    return "Home Assistant sau Cloudflare a întrerupt cererea. Reîncearcă; extragerea AI rulează acum în fundal.";
+  }
+  return res.statusText || `Eroare de rețea (${res.status})`;
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {

@@ -3,6 +3,7 @@ import { Camera, FileUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
 import { api, ApiError } from "../lib/api";
+import { compressImage } from "../lib/image";
 import { money, todayIso } from "../lib/format";
 import type { ExtractedItem, ExtractResponse } from "../lib/types";
 import { inputClass } from "../components/Modal";
@@ -20,9 +21,21 @@ export default function ImportPage() {
     setBusy(true);
     setError("");
     try {
+      const ready = file.type.startsWith("image/") ? await compressImage(file) : file;
       const body = new FormData();
-      body.append("file", file);
-      const data = await api<ExtractResponse>("/documents/upload", { method: "POST", body });
+      body.append("file", ready);
+      let data = await api<ExtractResponse>("/documents/upload", { method: "POST", body });
+      const started = Date.now();
+      while (data.status === "processing") {
+        if (Date.now() - started > 180_000) {
+          throw new ApiError(504, "Extragerea durează prea mult. Reîncearcă.");
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        data = await api<ExtractResponse>(`/documents/${data.document_id}`);
+      }
+      if (data.status === "error") {
+        throw new ApiError(502, data.warning || "Extragerea a eșuat");
+      }
       setResult(data);
       setItems(
         data.items.map((item) => ({

@@ -158,7 +158,14 @@ def _call_openai_compatible(
     user_text: str,
     images: list[Image.Image],
 ) -> dict:
-    client = OpenAI(api_key=key, base_url=base_url) if base_url else OpenAI(api_key=key)
+    client_kwargs: dict = {"api_key": key, "timeout": 120.0}
+    if base_url:
+        client_kwargs["base_url"] = base_url
+        client_kwargs["default_headers"] = {
+            "HTTP-Referer": "https://github.com/gnecula-zz/cheltuieli",
+            "X-Title": "Cheltuieli",
+        }
+    client = OpenAI(**client_kwargs)
     content: list[dict] = [{"type": "text", "text": user_text}]
     for image in images:
         content.append({"type": "image_url", "image_url": {"url": image_to_data_url(image)}})
@@ -172,9 +179,24 @@ def _call_openai_compatible(
     }
     try:
         response = client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
-    except Exception:
-        response = client.chat.completions.create(**kwargs)
+    except Exception as first:
+        try:
+            response = client.chat.completions.create(**kwargs)
+        except Exception as second:
+            raise RuntimeError(_ai_error(second or first)) from second
     return _parse_json_content(response.choices[0].message.content or "{}")
+
+
+def _ai_error(exc: Exception) -> str:
+    text = str(exc).strip() or exc.__class__.__name__
+    lowered = text.lower()
+    if "api key" in lowered or "401" in text or "unauthorized" in lowered:
+        return "Cheia API a fost respinsă. Verifică cheia în Setări."
+    if "timeout" in lowered or "timed out" in lowered:
+        return "Agentul AI a durat prea mult. Reîncearcă cu o poză mai clară."
+    if "connect" in lowered or "name or service" in lowered or "ssl" in lowered:
+        return "Add-on-ul nu a putut contacta agentul AI. Verifică internetul pe Home Assistant."
+    return f"Agent AI: {text[:400]}"
 
 
 def _call_anthropic(key: str, model: str, system_prompt: str, user_text: str, images: list[Image.Image]) -> dict:
@@ -187,23 +209,26 @@ def _call_anthropic(key: str, model: str, system_prompt: str, user_text: str, im
             }
         )
     content.append({"type": "text", "text": user_text + "\nRăspunde doar cu JSON."})
-    with httpx.Client(timeout=90) as client:
-        response = client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": model,
-                "max_tokens": 4096,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": content}],
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
+    try:
+        with httpx.Client(timeout=90) as client:
+            response = client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "max_tokens": 4096,
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": content}],
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPError as exc:
+        raise RuntimeError(_ai_error(exc)) from exc
     parts = [block.get("text") or "" for block in data.get("content") or [] if block.get("type") == "text"]
     return _parse_json_content("\n".join(parts))
 
@@ -213,17 +238,20 @@ def _call_google(key: str, model: str, system_prompt: str, user_text: str, image
     for image in images:
         parts.append({"inline_data": {"mime_type": "image/jpeg", "data": image_jpeg_b64(image)}})
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    with httpx.Client(timeout=90) as client:
-        response = client.post(
-            url,
-            params={"key": key},
-            json={
-                "contents": [{"parts": parts}],
-                "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
+    try:
+        with httpx.Client(timeout=90) as client:
+            response = client.post(
+                url,
+                params={"key": key},
+                json={
+                    "contents": [{"parts": parts}],
+                    "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPError as exc:
+        raise RuntimeError(_ai_error(exc)) from exc
     candidates = data.get("candidates") or []
     raw_parts = (((candidates[0] if candidates else {}).get("content") or {}).get("parts") or [])
     text = "".join(part.get("text") or "" for part in raw_parts)

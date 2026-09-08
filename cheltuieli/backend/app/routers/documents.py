@@ -4,11 +4,11 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.deps import get_current_user
 from app.models import Document, Expense, User
 from app.routers.expenses import to_public, visible_query
@@ -22,14 +22,63 @@ ALLOWED_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".
 MAX_BYTES = 20 * 1024 * 1024
 
 
+def _to_response(document: Document, db: Session) -> DocumentExtractResponse:
+    items: list[ExtractedItem] = []
+    if document.status == "processed":
+        try:
+            raw = json.loads(document.extraction_json or "[]")
+            items = [ExtractedItem.model_validate(item) for item in raw]
+        except (json.JSONDecodeError, ValueError):
+            items = []
+    return DocumentExtractResponse(
+        document_id=document.id,
+        filename=document.filename,
+        doc_type=document.doc_type,
+        method=document.method,
+        warning=document.warning,
+        openai_configured=is_ai_configured(db),
+        items=items,
+        status=document.status,
+    )
+
+
+def run_extract_job(document_id: int) -> None:
+    db = SessionLocal()
+    try:
+        document = db.get(Document, document_id)
+        if not document:
+            return
+        result = extract_file(Path(document.stored_path), document.filename, document.mime_type, db)
+        document.doc_type = result["doc_type"]
+        document.status = "processed"
+        document.method = result["method"]
+        document.raw_text = result.get("raw_text") or ""
+        document.extraction_json = json.dumps(result.get("items") or [], ensure_ascii=False)
+        document.warning = result.get("warning") or ""
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        document = db.get(Document, document_id)
+        if document:
+            document.status = "error"
+            document.warning = str(exc)[:2000]
+            db.commit()
+    finally:
+        db.close()
+
+
 @router.post("/upload", response_model=DocumentExtractResponse)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DocumentExtractResponse:
-    filename = file.filename or "document"
+    filename = file.filename or "document.jpg"
     suffix = Path(filename).suffix.lower()
+    if not suffix and (file.content_type or "").startswith("image/"):
+        suffix = ".jpg"
+        filename = f"{filename}{suffix}"
     if suffix not in ALLOWED_SUFFIXES:
         raise HTTPException(status_code=400, detail="Acceptăm PDF, JPG, PNG sau WEBP")
     data = await file.read()
@@ -42,41 +91,35 @@ async def upload_document(
     stored_path = upload_root / stored_name
     stored_path.write_bytes(data)
 
-    try:
-        result = extract_file(stored_path, filename, file.content_type or "", db)
-    except ValueError as exc:
-        stored_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        stored_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=502, detail=f"Extragerea a eșuat: {exc}") from exc
-
     document = Document(
         user_id=user.id,
         filename=filename,
         stored_path=str(stored_path),
         mime_type=file.content_type or "application/octet-stream",
-        doc_type=result["doc_type"],
-        status="processed",
-        method=result["method"],
-        raw_text=result.get("raw_text") or "",
-        extraction_json=json.dumps(result.get("items") or [], ensure_ascii=False),
-        warning=result.get("warning") or "",
+        doc_type="necunoscut",
+        status="processing",
+        method="",
+        raw_text="",
+        extraction_json="[]",
+        warning="",
     )
     db.add(document)
     db.commit()
     db.refresh(document)
+    background_tasks.add_task(run_extract_job, document.id)
+    return _to_response(document, db)
 
-    items = [ExtractedItem.model_validate(item) for item in result.get("items") or []]
-    return DocumentExtractResponse(
-        document_id=document.id,
-        filename=filename,
-        doc_type=document.doc_type,
-        method=document.method,
-        warning=document.warning,
-        openai_configured=is_ai_configured(db),
-        items=items,
-    )
+
+@router.get("/{document_id}", response_model=DocumentExtractResponse)
+def get_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> DocumentExtractResponse:
+    document = db.get(Document, document_id)
+    if not document or (document.user_id != user.id and user.role != "admin"):
+        raise HTTPException(status_code=404, detail="Document inexistent")
+    return _to_response(document, db)
 
 
 @router.post("/{document_id}/confirm", response_model=list[ExpensePublic])
@@ -89,6 +132,8 @@ def confirm_document(
     document = db.get(Document, document_id)
     if not document or (document.user_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="Document inexistent")
+    if document.status != "processed":
+        raise HTTPException(status_code=400, detail="Documentul încă se procesează")
 
     created: list[Expense] = []
     for item in payload.items:

@@ -64,6 +64,7 @@ export type ExtractResponse = {
   warning: string;
   openai_configured: boolean;
   items: ExtractedItem[];
+  status?: "processing" | "processed" | "error" | string;
 };
 
 export type ReportSummary = {
