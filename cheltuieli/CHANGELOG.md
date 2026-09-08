@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Modele gratuite OpenRouter în Setări (inclusiv cu vedere, pentru poze de bonuri)
+
 ## 1.0.1
 
 - Pozele de bonuri se comprimă înainte de upload (evită 413 pe Ingress/Cloudflare)
