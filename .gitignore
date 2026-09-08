@@ -1,0 +1,24 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+node_modules/
+dist/
+*.db
+*.sqlite3
+uploads/
+backend/uploads/
+.idea/
+.vscode/
+*.log
+.DS_Store
+Thumbs.db
+frontend/tsconfig.tsbuildinfo
+
+# copii locale ținute deschise de uvicorn/vite; sursa din git e cheltuieli/
+/backend/
+/frontend/

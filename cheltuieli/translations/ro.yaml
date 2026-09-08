@@ -1,0 +1,12 @@
+configuration:
+  admin_users:
+    name: Administratori HA
+    description: Username-uri sau ID-uri Home Assistant, separate prin virgulă. Gol = primul vizitator e admin.
+  ai_provider:
+    name: Furnizor AI
+  ai_model:
+    name: Model AI
+  ai_api_key:
+    name: Cheie API
+    description: Folosită la extragerea din poze de bonuri. Poți o lăsa goală și o setezi din aplicație.
+network: {}

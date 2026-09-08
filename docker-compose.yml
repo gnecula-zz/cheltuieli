@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cheltuieli
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cheltuieli}
+      POSTGRES_DB: cheltuieli
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cheltuieli -d cheltuieli"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./cheltuieli/backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://cheltuieli:${POSTGRES_PASSWORD:-cheltuieli}@db:5432/cheltuieli
+      UPLOAD_DIR: /data/uploads
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./cheltuieli/frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  uploads:
