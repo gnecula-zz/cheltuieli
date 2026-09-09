@@ -77,6 +77,20 @@ export default function ImportPage() {
     }
   };
 
+  const discardDraft = async (documentId: number) => {
+    setError("");
+    try {
+      await api(`/documents/${documentId}`, { method: "DELETE" });
+      if (result?.document_id === documentId) {
+        setResult(null);
+        setItems([]);
+      }
+      loadDrafts();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Nu am șters extrasul");
+    }
+  };
+
   const confirm = async () => {
     if (!result) return;
     const documentId = result.document_id;
@@ -186,16 +200,16 @@ export default function ImportPage() {
       {drafts.length > 0 && !result ? (
         <section className="rounded-3xl bg-paper p-5 shadow-card">
           <h2 className="font-display text-xl">Extrase nesalvate</h2>
-          <p className="mt-1 text-sm text-ink/60">Bonuri citite pe care nu le-ai salvat încă. Poți relua adăugarea.</p>
+          <p className="mt-1 text-sm text-ink/60">Bonuri citite pe care nu le-ai salvat încă. Poți relua adăugarea sau le poți șterge.</p>
           <ul className="mt-3 space-y-2">
             {drafts.map((doc) => {
               const hint = doc.items.find((item) => item.merchant)?.merchant || doc.filename;
               const amount = doc.items.find((item) => item.amount != null && item.amount !== "")?.amount;
               return (
-                <li key={doc.document_id}>
+                <li key={doc.document_id} className="flex items-stretch gap-2">
                   <button
                     type="button"
-                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl bg-sand px-4 py-3 text-left"
+                    className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 rounded-2xl bg-sand px-4 py-3 text-left"
                     onClick={() => {
                       setError("");
                       showExtract(doc);
@@ -203,6 +217,13 @@ export default function ImportPage() {
                   >
                     <span className="truncate font-medium">{hint}</span>
                     <span className="shrink-0 text-sm text-ink/55">{amount ? money(amount) : `${doc.items.length} rânduri`}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-2xl px-3 font-medium text-clay"
+                    onClick={() => void discardDraft(doc.document_id)}
+                  >
+                    Șterge
                   </button>
                 </li>
               );
@@ -220,9 +241,29 @@ export default function ImportPage() {
                 {result.filename} · {result.doc_type} · {result.method === "local_text" ? "parsare locală" : result.method === "ai_vision" || result.method === "openai_vision" ? "extragere AI" : "completare manuală"}
               </p>
             </div>
-            <button type="button" disabled={busy} onClick={confirm} className="min-h-11 rounded-2xl bg-forest px-4 font-semibold text-sand">
-              Salvează selectate
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="min-h-11 rounded-2xl bg-white px-4 font-semibold text-forest shadow-card"
+                onClick={() => {
+                  setResult(null);
+                  setItems([]);
+                  loadDrafts();
+                }}
+              >
+                Înapoi
+              </button>
+              <button
+                type="button"
+                className="min-h-11 rounded-2xl px-4 font-semibold text-clay"
+                onClick={() => void discardDraft(result.document_id)}
+              >
+                Șterge extrasul
+              </button>
+              <button type="button" disabled={busy} onClick={confirm} className="min-h-11 rounded-2xl bg-forest px-4 font-semibold text-sand">
+                Salvează selectate
+              </button>
+            </div>
           </div>
           {result.warning ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{result.warning}</p> : null}
 

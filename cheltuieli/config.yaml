@@ -1,5 +1,5 @@
 name: Cheltuieli
-version: "1.0.3"
+version: "1.0.4"
 slug: cheltuieli
 description: Cheltuieli gospodărie cu autentificare Home Assistant (Ingress)
 arch:

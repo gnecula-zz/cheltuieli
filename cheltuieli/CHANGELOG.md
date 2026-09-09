@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+
+- Poți șterge extrasele nesalvate din Import
+
 ## 1.0.3
 
 - Salvarea a două bonuri de la același comerciant; extrasele abandonate pot fi reluate din Import

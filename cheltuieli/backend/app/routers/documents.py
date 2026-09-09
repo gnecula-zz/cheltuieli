@@ -150,6 +150,34 @@ def list_unsaved_documents(
     return [_to_response(row, db) for row in rows]
 
 
+def _unlink_upload(stored_path: str) -> None:
+    stored = Path(stored_path)
+    upload_root = Path(settings.upload_dir).resolve()
+    try:
+        resolved = stored.resolve()
+        if resolved.is_relative_to(upload_root):
+            resolved.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+@router.delete("/{document_id}")
+def delete_unsaved_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    document = db.get(Document, document_id)
+    if not document or (document.user_id != user.id and user.role != "admin"):
+        raise HTTPException(status_code=404, detail="Document inexistent")
+    if db.query(Expense.id).filter(Expense.document_id == document.id).first():
+        raise HTTPException(status_code=400, detail="Documentul e deja salvat ca cheltuială")
+    _unlink_upload(document.stored_path)
+    db.delete(document)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/{document_id}", response_model=DocumentExtractResponse)
 def get_document(
     document_id: int,
