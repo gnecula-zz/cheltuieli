@@ -1,0 +1,79 @@
+Cheltuieli — rulare locală și instalare în afara Home Assistant
+==============================================================
+
+Add-on-ul Home Assistant se instalează din README.md (repository GitHub).
+Acest fișier e doar pentru dezvoltare pe calculator și pentru un server
+propriu (VPS + Docker), fără Supervisor.
+
+Sursa aplicației e în folderul cheltuieli/.
+
+
+1. Rulare locală (dezvoltare)
+-----------------------------
+
+Cerințe: Python 3.11+ și Node.js 20+.
+
+1. Copiază .env.example în .env și completează SECRET_KEY.
+   Opțional: OPENAI_API_KEY (sau setezi agentul AI din Setări, în aplicație).
+   AUTH_MODE=local (implicit) — primul cont înregistrat devine administrator.
+
+2. Backend, într-un terminal:
+
+   cd cheltuieli/backend
+   python -m venv .venv
+   .venv\Scripts\activate          (Windows)
+   source .venv/bin/activate       (Linux / macOS)
+   pip install -r requirements.txt
+   uvicorn app.main:app --port 8000
+
+3. Frontend, în alt terminal:
+
+   cd cheltuieli/frontend
+   npm install
+   npm run dev
+
+Deschide http://localhost:5173
+
+Fără cheie AI în Setări, PDF-urile cu text se parsează local. Pozele de
+bonuri se încarcă, dar datele se completează manual.
+
+Variabile utile din .env:
+
+  SECRET_KEY          obligatorie; schimb-o față de exemplul din .env.example
+  DATABASE_URL        implicit SQLite local; în producție PostgreSQL
+  CORS_ORIGINS        http://localhost:5173 pentru Vite
+  COOKIE_SECURE       false pe HTTP local, true pe HTTPS
+  PUBLIC_URL          http://localhost:5173
+  UPLOAD_DIR          folderul cu poze/PDF-uri încărcate
+  AUTH_MODE           local  sau  homeassistant (doar add-on)
+
+
+2. Producție (VPS + Docker)
+---------------------------
+
+Același cod, alte variabile. Pe server:
+
+1. Copiază proiectul.
+2. Creează .env cu cel puțin:
+
+   SECRET_KEY=...
+   POSTGRES_PASSWORD=...
+   COOKIE_SECURE=true
+   CORS_ORIGINS=https://domeniul-tau.ro
+   PUBLIC_URL=https://domeniul-tau.ro
+
+   Opțional: OPENAI_API_KEY (sau din Setări, după instalare).
+
+3. Pornește:
+
+   docker compose up -d --build
+
+4. Pune HTTPS în fața portului 80 (Caddy, nginx + Let's Encrypt sau un
+   reverse proxy).
+
+Datele Postgres și fișierele încărcate stau pe volume Docker. Migrările
+Alembic rulează la pornirea API-ului.
+
+Mutare de pe local: export CSV din Rapoarte, sau dump Postgres dacă deja
+folosești Compose local. Folderul de upload-uri se copiază pe volume-ul
+uploads.

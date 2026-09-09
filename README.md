@@ -1,63 +1,43 @@
 # Cheltuieli
 
-Aplicație web pentru gospodărie: cheltuieli manuale, import din poze de bonuri fiscale și din PDF-uri (facturi, extrase de cont), categorii, bugete și rapoarte lunare.
+Add-on Home Assistant pentru cheltuielile gospodăriei: înregistrare manuală, import din poze de bonuri și din PDF-uri (facturi, extrase), categorii, bugete și rapoarte lunare.
 
-## Add-on Home Assistant (GitHub)
+Aplicația rulează **doar prin Ingress** (bara laterală). Nu publică un port. Accesul de pe internet trece prin Home Assistant, inclusiv dacă HA e expus cu **Cloudflared** pe domeniul tău.
+
+## Instalare (Home Assistant)
 
 [![Adaugă repository-ul în Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https://github.com/gnecula-zz/cheltuieli)
 
 1. În Home Assistant: **Setări → Add-on-uri → Magazin → ⋮ → Repositories**.
 2. Adaugă: `https://github.com/gnecula-zz/cheltuieli`
-3. Instalează **Cheltuieli**, pornește-l. Apare în bara laterală.
+3. Instalează **Cheltuieli** și pornește-l. Apare în bara laterală.
 
-Prima instalare **construiește** imaginea pe dispozitiv (Node + Python); poate dura câteva minute. Nu publica un port. Tunelul **Cloudflared** rămâne doar pe Home Assistant (8123). Detalii: [cheltuieli/DOCS.md](cheltuieli/DOCS.md).
+Prima instalare **construiește** imaginea pe dispozitiv (Node + Python) și poate dura câteva minute. Nu publica un port pentru add-on.
 
-Opțiunea `admin_users`: username-uri HA, separate prin virgulă. Dacă e goală, primul care deschide aplicația e administrator.
+Tunelul **Cloudflared** rămâne doar pe Home Assistant (portul 8123). Nu crea un hostname Cloudflare separat pentru Cheltuieli:
 
-## Rulare locală (dezvoltare)
+`https://domeniul-tau` → Cloudflared → HA 8123 → Ingress → add-on
 
-Cerințe: Python 3.11+, Node 20+. Sursa aplicației e în folderul `cheltuieli/`.
+Identitatea vine din utilizatorul Home Assistant, nu din Cloudflare. Detalii suplimentare: [cheltuieli/DOCS.md](cheltuieli/DOCS.md).
 
-1. Copiază `.env.example` în `.env` și completează `SECRET_KEY`. Opțional: `OPENAI_API_KEY`.
-2. Backend:
+### Opțiuni add-on
 
-```bash
-cd cheltuieli/backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --port 8000
-```
+- **admin_users** — username-uri sau ID-uri HA, separate prin virgulă. Dacă e goală, primul care deschide aplicația e administrator.
+- **ai_api_key** — opțională. Poți lăsa goală și o completezi din **Setări** în aplicație. Furnizorul și modelul (OpenAI, Claude, Gemini, OpenRouter) se aleg tot din aplicație și rămân după update.
 
-3. Frontend (alt terminal):
+Fiecare utilizator HA care deschide Cheltuieli din bara laterală primește un cont mapat după **ID-ul HA** (nu după username), ca să nu se piardă cheltuielile dacă schimbi numele. Login-ul cu email/parolă este dezactivat.
 
-```bash
-cd cheltuieli/frontend
-npm install
-npm run dev
-```
-
-Deschide [http://localhost:5173](http://localhost:5173). Primul cont înregistrat devine administrator.
-
-Fără cheie AI în Setări, PDF-urile **cu text** se parsează local. Pozele de bonuri se încarcă, dar datele se completează manual.
-
-## Producție (VPS + Docker)
-
-Același cod, alte variabile. Pe server:
-
-1. Copiază proiectul, creează `.env` cu `SECRET_KEY`, `POSTGRES_PASSWORD`, `COOKIE_SECURE=true`, `CORS_ORIGINS=https://domeniul-tau.ro`, `PUBLIC_URL=https://domeniul-tau.ro` și, opțional, `OPENAI_API_KEY`.
-2. `docker compose up -d --build`
-3. Pune HTTPS în fața portului 80 (Caddy, nginx + Let's Encrypt sau un reverse proxy).
-
-Datele Postgres și fișierele încărcate stau pe volume Docker. Migrările Alembic rulează la pornirea API-ului.
-
-Mutare de pe local: export CSV din Rapoarte, sau dump Postgres dacă deja folosești Compose local. Folderul de upload-uri se copiază pe volume-ul `uploads`.
+Datele (SQLite și fișierele încărcate) stau pe `/data` și persistă la update-ul add-on-ului.
 
 ## Funcții
 
-- Conturi familie: admin creează membri
-- Cheltuieli personale sau comune, TVA, card/numerar
-- Import PDF (text) și poze (agent AI din Setări: OpenAI, Claude, Gemini sau OpenRouter)
-- Review înainte de salvare
-- Panou lunar, rapoarte, bugete, export CSV
-- Interfață mobile-first (cameră pentru bonuri)
+- **Cheltuieli** — adaugi rapid sumă, dată, comerciant, categorie, TVA, card sau numerar. Poți marca o cheltuială ca personală sau comună (gospodărie).
+- **Categorii** — listă implicită (cumpărături, transport, utilități etc.), cu iconiță emoji și culoare. Administratorul poate redenumi orice categorie, inclusiv cele implicite, și poate adăuga altele.
+- **Import bonuri și PDF-uri** — poze din cameră sau fișiere (JPG, PNG, PDF). PDF-urile cu text se citesc local. Pozele și scanurile folosesc agentul AI din Setări. Înainte de salvare verifici și corectezi extrasul. Extrasele nesalvate pot fi reluate sau șterse.
+- **Agent AI** — OpenAI, Anthropic (Claude), Google (Gemini) sau OpenRouter (inclusiv modele gratuite cu vedere, pentru bonuri). Cheia se salvează în aplicație.
+- **Conturi familie** — pe HA, membrii sunt utilizatorii care deschid add-on-ul. Administratorii se definesc din `admin_users`.
+- **Bugete** — plafon lunar pe categorie, ca să vezi ce s-a cheltuit față de ce ți-ai propus.
+- **Panou și rapoarte** — totaluri lunare, pe categorii și pe membri, cu export CSV.
+- **Mobil** — interfață gândită pentru telefon, inclusiv buton de poză pentru bonuri.
+
+Rulare locală (dezvoltare) și instalare pe VPS: vezi [instalare.txt](instalare.txt).
