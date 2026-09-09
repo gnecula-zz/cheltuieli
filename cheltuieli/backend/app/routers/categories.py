@@ -68,6 +68,8 @@ def delete_category(
     category = db.get(Category, category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Categorie inexistentă")
+    if category.is_system:
+        raise HTTPException(status_code=400, detail="Categoria de sistem nu poate fi ștearsă, dar o poți redenumi")
     in_use = db.query(Expense).filter(Expense.category_id == category_id).count()
     if in_use:
         raise HTTPException(status_code=400, detail="Categoria e folosită la cheltuieli")

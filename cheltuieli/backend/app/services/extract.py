@@ -49,6 +49,7 @@ Răspunde STRICT cu JSON, fără text în plus, în forma:
 }
 Reguli:
 - Pentru extras de cont, include DOAR ieșirile (debit/cumpărări/plăți), nu încasările.
+- Dacă sunt mai multe bonuri în imagine, un item separat pentru fiecare bon (nu le combina).
 - amount este valoarea cheltuielii, pozitivă.
 - Dacă e un bon sau o factură, un singur item cu totalul e suficient.
 - Datele în format ISO. Dacă lipsește un câmp, folosește "" sau null.

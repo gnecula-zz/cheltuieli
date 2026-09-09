@@ -4,13 +4,16 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
+from pydantic import ValidationError
+from sqlalchemy import exists
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal, get_db
 from app.deps import get_current_user
-from app.models import Document, Expense, User
+from app.models import Category, Document, Expense, User
 from app.routers.expenses import to_public, visible_query
 from app.schemas import ConfirmImportRequest, DocumentExtractResponse, ExpensePublic, ExtractedItem
 from app.services.ai import is_ai_configured
@@ -22,14 +25,24 @@ ALLOWED_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".
 MAX_BYTES = 20 * 1024 * 1024
 
 
-def _to_response(document: Document, db: Session) -> DocumentExtractResponse:
+def _parse_items(raw_json: str) -> list[ExtractedItem]:
+    try:
+        raw = json.loads(raw_json or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(raw, list):
+        return []
     items: list[ExtractedItem] = []
-    if document.status == "processed":
+    for entry in raw:
         try:
-            raw = json.loads(document.extraction_json or "[]")
-            items = [ExtractedItem.model_validate(item) for item in raw]
-        except (json.JSONDecodeError, ValueError):
-            items = []
+            items.append(ExtractedItem.model_validate(entry))
+        except ValidationError:
+            continue
+    return items
+
+
+def _to_response(document: Document, db: Session) -> DocumentExtractResponse:
+    items = _parse_items(document.extraction_json) if document.status == "processed" else []
     return DocumentExtractResponse(
         document_id=document.id,
         filename=document.filename,
@@ -40,6 +53,11 @@ def _to_response(document: Document, db: Session) -> DocumentExtractResponse:
         items=items,
         status=document.status,
     )
+
+
+def _no_store(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
 
 
 def run_extract_job(document_id: int) -> None:
@@ -110,12 +128,36 @@ async def upload_document(
     return _to_response(document, db)
 
 
+@router.get("", response_model=list[DocumentExtractResponse])
+def list_unsaved_documents(
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[DocumentExtractResponse]:
+    _no_store(response)
+    saved = exists().where(Expense.document_id == Document.id)
+    rows = (
+        db.query(Document)
+        .filter(
+            Document.user_id == user.id,
+            Document.status == "processed",
+            ~saved,
+        )
+        .order_by(Document.id.desc())
+        .limit(15)
+        .all()
+    )
+    return [_to_response(row, db) for row in rows]
+
+
 @router.get("/{document_id}", response_model=DocumentExtractResponse)
 def get_document(
     document_id: int,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DocumentExtractResponse:
+    _no_store(response)
     document = db.get(Document, document_id)
     if not document or (document.user_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="Document inexistent")
@@ -141,29 +183,36 @@ def confirm_document(
             continue
         if item.amount is None or item.amount <= 0:
             continue
+        category_id = item.category_id
+        if category_id and db.get(Category, category_id) is None:
+            category_id = None
         expense = Expense(
             user_id=user.id,
-            category_id=item.category_id,
+            category_id=category_id,
             document_id=document.id,
             amount=Decimal(item.amount),
-            currency=item.currency or "RON",
+            currency=(item.currency or "RON")[:8],
             date=item.date or date.today(),
-            merchant=(item.merchant or "").strip(),
-            description=(item.description or "").strip(),
+            merchant=(item.merchant or "").strip()[:200],
+            description=(item.description or "").strip()[:400],
             vat_amount=item.vat_amount,
             payment_method=item.payment_method if item.payment_method in {"card", "numerar"} else "card",
             is_shared=item.is_shared,
             source=item.source if item.source in {"manual", "bon", "extras", "factura"} else document.doc_type,
-            invoice_number=(item.invoice_number or "").strip(),
-            cui=(item.cui or "").strip(),
+            invoice_number=(item.invoice_number or "").strip()[:80],
+            cui=(item.cui or "").strip()[:20],
         )
         db.add(expense)
         created.append(expense)
 
     if not created:
-        raise HTTPException(status_code=400, detail="Nu ai selectat nicio cheltuială validă")
+        raise HTTPException(status_code=400, detail="Nu ai selectat nicio cheltuială validă (verifică suma).")
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Nu am putut salva cheltuiala. Verifică categoria și suma.") from exc
     ids = [row.id for row in created]
     rows = visible_query(db, user).filter(Expense.id.in_(ids)).all()
     return [to_public(row) for row in rows]

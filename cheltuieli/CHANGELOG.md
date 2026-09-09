@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+- Salvarea a două bonuri de la același comerciant; extrasele abandonate pot fi reluate din Import
+- Fără curse între poze consecutive; SQLite WAL; validare mai tolerantă la sumă/dată
+- Editare categorii (nume, emoji, culoare), inclusiv cele implicite
+
 ## 1.0.2
 
 - Modele gratuite OpenRouter în Setări (inclusiv cu vedere, pentru poze de bonuri)

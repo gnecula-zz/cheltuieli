@@ -4,6 +4,72 @@ import { api, ApiError } from "../lib/api";
 import Modal, { Field, inputClass } from "../components/Modal";
 import type { AiSettings, Budget, Category, User } from "../lib/types";
 
+const CATEGORY_EMOJIS = [
+  "🛒",
+  "🚌",
+  "💡",
+  "🏠",
+  "💊",
+  "🍽️",
+  "🎬",
+  "📚",
+  "👕",
+  "📱",
+  "🏛️",
+  "📦",
+  "⛽",
+  "🐶",
+  "👶",
+  "🎁",
+  "✈️",
+  "🏦",
+  "🧹",
+  "🔧",
+];
+
+function EmojiField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (icon: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <input
+        className={inputClass}
+        value={value}
+        maxLength={8}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label="Iconiță"
+      />
+      <div className="flex flex-wrap gap-1.5">
+        {CATEGORY_EMOJIS.map((icon) => (
+          <button
+            key={icon}
+            type="button"
+            className={`size-10 rounded-xl text-lg ${value === icon ? "bg-forest/15 ring-2 ring-forest" : "bg-sand"}`}
+            onClick={() => onChange(icon)}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-ink/50">
+        Copiază și alte emoji de pe{" "}
+        <a className="text-forest underline" href="https://getemoji.com/" target="_blank" rel="noreferrer">
+          getemoji.com
+        </a>{" "}
+        sau caută pe{" "}
+        <a className="text-forest underline" href="https://emojipedia.org/" target="_blank" rel="noreferrer">
+          Emojipedia
+        </a>
+        .
+      </p>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { user, categories, status, refresh } = useAuth();
   const now = new Date();
@@ -12,6 +78,9 @@ export default function Settings() {
   const [budgets, setBudgets] = useState<Record<number, string>>({});
   const [members, setMembers] = useState<User[]>([]);
   const [newCat, setNewCat] = useState("");
+  const [newCatIcon, setNewCatIcon] = useState("📦");
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [catForm, setCatForm] = useState({ name: "", icon: "📦", color: "#3F6F5B" });
   const [memberForm, setMemberForm] = useState({ name: "", email: "", password: "", role: "membru" });
   const [editing, setEditing] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", password: "", role: "membru", is_active: true });
@@ -280,39 +349,58 @@ export default function Settings() {
 
       <section className="rounded-3xl bg-paper p-5 shadow-card">
         <h2 className="font-display text-xl">Categorii</h2>
+        <p className="mt-1 text-sm text-ink/55">Poți redenumi și schimba iconița la toate, inclusiv la cele implicite.</p>
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
           {categories.map((c) => (
-            <li key={c.id} className="flex items-center justify-between rounded-xl bg-sand px-3 py-2 text-sm">
-              <span>
+            <li key={c.id} className="flex items-center justify-between gap-2 rounded-xl bg-sand px-3 py-2 text-sm">
+              <span className="min-w-0 truncate">
                 {c.icon} {c.name}
               </span>
-              {user?.role === "admin" && !c.is_system ? (
-                <button
-                  type="button"
-                  className="text-clay"
-                  onClick={async () => {
-                    try {
-                      await api(`/categories/${c.id}`, { method: "DELETE" });
-                      await refresh();
-                    } catch (err) {
-                      setError(err instanceof ApiError ? err.message : "Nu am șters categoria");
-                    }
-                  }}
-                >
-                  Șterge
-                </button>
+              {user?.role === "admin" ? (
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg bg-white px-3 py-2 font-medium text-forest"
+                    onClick={() => {
+                      setEditingCategory(c);
+                      setCatForm({ name: c.name, icon: c.icon, color: c.color });
+                    }}
+                  >
+                    Editează
+                  </button>
+                  {!c.is_system ? (
+                    <button
+                      type="button"
+                      className="text-clay"
+                      onClick={async () => {
+                        try {
+                          await api(`/categories/${c.id}`, { method: "DELETE" });
+                          await refresh();
+                        } catch (err) {
+                          setError(err instanceof ApiError ? err.message : "Nu am șters categoria");
+                        }
+                      }}
+                    >
+                      Șterge
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </li>
           ))}
         </ul>
         {user?.role === "admin" ? (
           <form
-            className="mt-3 flex gap-2"
+            className="mt-3 grid gap-2 sm:grid-cols-[auto_1fr_auto]"
             onSubmit={async (e) => {
               e.preventDefault();
               try {
-                await api<Category>("/categories", { method: "POST", body: JSON.stringify({ name: newCat }) });
+                await api<Category>("/categories", {
+                  method: "POST",
+                  body: JSON.stringify({ name: newCat, icon: newCatIcon || "📦" }),
+                });
                 setNewCat("");
+                setNewCatIcon("📦");
                 await refresh();
                 flash("Categorie adăugată");
               } catch (err) {
@@ -320,6 +408,13 @@ export default function Settings() {
               }
             }}
           >
+            <input
+              className={`${inputClass} w-16 text-center text-lg`}
+              value={newCatIcon}
+              maxLength={8}
+              onChange={(e) => setNewCatIcon(e.target.value)}
+              aria-label="Iconiță categorie nouă"
+            />
             <input className={inputClass} placeholder="Categorie nouă" value={newCat} onChange={(e) => setNewCat(e.target.value)} required />
             <button type="submit" className="rounded-xl bg-forest px-4 font-semibold text-sand">
               Adaugă
@@ -423,6 +518,50 @@ export default function Settings() {
           </form>
           )}
         </section>
+      ) : null}
+
+      {editingCategory ? (
+        <Modal title={`Editează ${editingCategory.name}`} onClose={() => setEditingCategory(null)}>
+          <form
+            className="space-y-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                await api(`/categories/${editingCategory.id}`, {
+                  method: "PATCH",
+                  body: JSON.stringify({
+                    name: catForm.name.trim(),
+                    icon: catForm.icon.trim() || "•",
+                    color: catForm.color,
+                  }),
+                });
+                setEditingCategory(null);
+                await refresh();
+                flash("Categoria a fost salvată");
+              } catch (err) {
+                setError(err instanceof ApiError ? err.message : "Nu am salvat categoria");
+              }
+            }}
+          >
+            <Field label="Nume">
+              <input className={inputClass} required minLength={2} value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })} />
+            </Field>
+            <Field label="Iconiță">
+              <EmojiField value={catForm.icon} onChange={(icon) => setCatForm({ ...catForm, icon })} />
+            </Field>
+            <Field label="Culoare">
+              <input
+                className="h-12 w-full cursor-pointer rounded-xl border border-black/10 bg-white p-1"
+                type="color"
+                value={catForm.color}
+                onChange={(e) => setCatForm({ ...catForm, color: e.target.value })}
+              />
+            </Field>
+            <button type="submit" className="min-h-12 w-full rounded-2xl bg-forest font-semibold text-sand">
+              Salvează categoria
+            </button>
+          </form>
+        </Modal>
       ) : null}
 
       {editing ? (

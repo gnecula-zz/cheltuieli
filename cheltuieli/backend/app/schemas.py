@@ -4,7 +4,7 @@ from datetime import date as Date
 from datetime import datetime as DateTime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserPublic(BaseModel):
@@ -164,6 +164,58 @@ class ExtractedItem(BaseModel):
     invoice_number: str = ""
     cui: str = ""
     selected: bool = True
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def _date(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        if isinstance(value, Date):
+            return value
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            return Date.fromisoformat(text[:10])
+        except ValueError:
+            from app.services.extract import parse_date
+
+            return parse_date(text)
+
+    @field_validator("amount", "vat_amount", mode="before")
+    @classmethod
+    def _money(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float, Decimal)):
+            return value
+        from app.services.extract import parse_amount
+
+        parsed = parse_amount(str(value))
+        return parsed
+
+    @field_validator("category_id", mode="before")
+    @classmethod
+    def _category(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        return value
+
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def _payment(cls, value: object) -> str:
+        text = str(value or "card").strip().lower()
+        if "numerar" in text or "cash" in text:
+            return "numerar"
+        return "card"
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _currency(cls, value: object) -> str:
+        text = str(value or "RON").strip().upper()
+        if text in {"LEI", "RON"}:
+            return "RON"
+        return (text or "RON")[:8]
 
 
 class DocumentExtractResponse(BaseModel):
