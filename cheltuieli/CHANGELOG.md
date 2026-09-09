@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- Furnizorul AI din Setări nu se mai resetează la OpenAI după update-ul add-on-ului
+
 ## 1.0.4
 
 - Poți șterge extrasele nesalvate din Import

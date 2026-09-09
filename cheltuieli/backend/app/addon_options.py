@@ -50,18 +50,16 @@ def apply_addon_options() -> dict:
 
 
 def apply_ai_options(db, opts: dict) -> None:
+    """Copy the add-on API key only when the app has none.
+
+    Supervisor rewrites /data/options.json on every start with schema defaults
+    (ai_provider=openai). Those must not overwrite provider/model from Setări.
+    """
     key = str(opts.get("ai_api_key") or "").strip()
-    provider = str(opts.get("ai_provider") or "").strip()
-    model = str(opts.get("ai_model") or "").strip()
-    if not key and not provider and not model:
+    if not key:
         return
     row = db.query(AppConfig).order_by(AppConfig.id).first()
-    if not row:
+    if not row or (row.ai_api_key or "").strip():
         return
-    if provider:
-        row.ai_provider = provider
-    if model:
-        row.ai_model = model
-    if key:
-        row.ai_api_key = key
+    row.ai_api_key = key
     db.commit()

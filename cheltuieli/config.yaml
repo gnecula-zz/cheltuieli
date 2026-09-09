@@ -1,5 +1,5 @@
 name: Cheltuieli
-version: "1.0.4"
+version: "1.0.5"
 slug: cheltuieli
 description: Cheltuieli gospodărie cu autentificare Home Assistant (Ingress)
 arch:
@@ -19,11 +19,7 @@ map: []
 watchdog: http://[HOST]:8099/api/health
 options:
   admin_users: ""
-  ai_provider: openai
-  ai_model: ""
   ai_api_key: ""
 schema:
   admin_users: str
-  ai_provider: list(openai|anthropic|google|openrouter)
-  ai_model: str
   ai_api_key: password

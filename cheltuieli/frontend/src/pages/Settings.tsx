@@ -196,6 +196,7 @@ export default function Settings() {
           <h2 className="font-display text-xl">Agent AI</h2>
           <p className="mt-2 text-sm text-ink/65">
             Folosit la extragerea din poze de bonuri și PDF-uri scanate. Cheia nu se afișează integral.
+            Furnizorul și modelul se salvează aici și rămân după update-ul add-on-ului.
           </p>
           <p className="mt-1 text-sm text-ink/55">
             {ai?.api_key_set ? `Cheie setată (${ai.api_key_hint})` : "Nicio cheie — doar PDF-uri cu text"}

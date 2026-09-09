@@ -2,11 +2,7 @@ configuration:
   admin_users:
     name: HA admins
     description: Home Assistant usernames or user IDs, comma-separated. Empty = first visitor becomes admin.
-  ai_provider:
-    name: AI provider
-  ai_model:
-    name: AI model
   ai_api_key:
     name: API key
-    description: Used for receipt photos. Leave empty to set it later in the app.
+    description: Optional. Choose provider and model in the app Settings; they persist across updates.
 network: {}
