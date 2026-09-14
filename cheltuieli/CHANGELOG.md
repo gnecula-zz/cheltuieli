@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7
+
+- Cursul EUR→RON încearcă mai multe gazde BNR; dacă toate eșuează, folosește cursul zilnic ECB ca fallback
+- În Import se afișează clar sursa folosită (BNR sau ECB)
+
 ## 1.0.6
 
 - La importul bonurilor poți alege moneda (RON / EUR); sumele în euro se convertesc în lei la cursul BNR din ziua curentă

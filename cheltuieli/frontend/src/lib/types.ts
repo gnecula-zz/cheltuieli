@@ -67,6 +67,7 @@ export type BnrRate = {
   multiplier?: number;
   rate_date: string | null;
   source: string;
+  source_label?: string;
   source_url?: string;
 };
 

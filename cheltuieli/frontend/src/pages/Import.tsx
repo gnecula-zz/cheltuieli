@@ -23,6 +23,12 @@ function parseAmountInput(value: number | string | null | undefined): number | n
   return Number.isFinite(n) ? n : null;
 }
 
+function sourceShort(rate: BnrRate | null): string {
+  if (!rate?.source) return "BNR";
+  if (rate.source === "ECB") return "ECB (fallback)";
+  return rate.source;
+}
+
 function ConversionHint({
   amount,
   currency,
@@ -36,13 +42,14 @@ function ConversionHint({
 }) {
   if (currency !== "EUR") return null;
   if (rateError) return <p className="text-xs text-clay">{rateError}</p>;
-  if (!rate) return <p className="text-xs text-ink/45">Se încarcă cursul BNR…</p>;
+  if (!rate) return <p className="text-xs text-ink/45">Se încarcă cursul valutar…</p>;
   const value = parseAmountInput(amount);
-  if (value == null) return <p className="text-xs text-ink/45">Curs BNR EUR: {rate.rate.toFixed(4)} ({rate.rate_date})</p>;
+  const src = sourceShort(rate);
+  if (value == null) return <p className="text-xs text-ink/45">Curs {src} EUR: {rate.rate.toFixed(4)} ({rate.rate_date})</p>;
   const ron = value * rate.rate;
   return (
     <p className="text-xs text-ink/55">
-      {money(value, "EUR")} × {rate.rate.toFixed(4)} curs BNR ({rate.rate_date}) = {money(ron, "RON")}
+      {money(value, "EUR")} × {rate.rate.toFixed(4)} curs {src} ({rate.rate_date}) = {money(ron, "RON")}
     </p>
   );
 }
@@ -83,7 +90,7 @@ export default function ImportPage() {
       .catch((err) => {
         if (!cancelled) {
           setEurRate(null);
-          setRateError(err instanceof ApiError ? err.message : "Nu am putut prelua cursul BNR.");
+          setRateError(err instanceof ApiError ? err.message : "Nu am putut prelua cursul valutar.");
         }
       });
     return () => {
@@ -193,7 +200,7 @@ export default function ImportPage() {
         <h1 className="font-display text-3xl">Bonuri și PDF-uri</h1>
         <p className="mt-1 text-sm text-ink/60">
           PDF-urile cu text se citesc local. Pozele de bonuri și scanurile folosesc agentul AI din Setări, dacă e cheia configurată.
-          Sumele în euro se convertesc în lei la cursul BNR din ziua curentă.
+          Sumele în euro se convertesc în lei la cursul zilei (BNR, sau ECB dacă BNR nu răspunde).
         </p>
       </div>
 
@@ -329,7 +336,8 @@ export default function ImportPage() {
           {result.warning ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{result.warning}</p> : null}
           {needsEurRate && eurRate ? (
             <p className="rounded-2xl bg-forest/5 px-4 py-3 text-sm text-forest">
-              Curs BNR EUR din {eurRate.rate_date}: <strong>{eurRate.rate.toFixed(4)} lei</strong>. La salvare, sumele în euro se convertesc în RON.
+              Curs {sourceShort(eurRate)} EUR din {eurRate.rate_date}: <strong>{eurRate.rate.toFixed(4)} lei</strong>
+              {eurRate.source === "ECB" ? " (BNR indisponibil)" : ""}. La salvare, sumele în euro se convertesc în RON.
             </p>
           ) : null}
           {needsEurRate && rateError ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{rateError}</p> : null}
