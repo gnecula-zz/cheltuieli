@@ -34,6 +34,10 @@ export type Expense = {
   source: "manual" | "bon" | "extras" | "factura" | string;
   invoice_number: string;
   cui: string;
+  original_amount?: number | string | null;
+  original_currency?: string | null;
+  exchange_rate?: number | string | null;
+  exchange_rate_date?: string | null;
   user_name: string;
   category_name: string | null;
   category_color: string | null;
@@ -54,6 +58,16 @@ export type ExtractedItem = {
   invoice_number: string;
   cui: string;
   selected: boolean;
+};
+
+export type BnrRate = {
+  currency: string;
+  rate: number;
+  rate_raw?: number;
+  multiplier?: number;
+  rate_date: string | null;
+  source: string;
+  source_url?: string;
 };
 
 export type ExtractResponse = {

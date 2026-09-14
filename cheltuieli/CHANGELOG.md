@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.6
+
+- La importul bonurilor poți alege moneda (RON / EUR); sumele în euro se convertesc în lei la cursul BNR din ziua curentă
+- Se păstrează suma originală, moneda, cursul folosit și echivalentul în RON
+
 ## 1.0.5
 
 - Furnizorul AI din Setări nu se mai resetează la OpenAI după update-ul add-on-ului

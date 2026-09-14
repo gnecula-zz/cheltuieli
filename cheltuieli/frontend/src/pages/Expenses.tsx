@@ -159,7 +159,14 @@ export default function Expenses() {
                   {user?.role === "admin" ? ` · ${row.user_name}` : ""}
                 </p>
               </button>
-              <span className="shrink-0 font-display text-lg">{money(row.amount, row.currency)}</span>
+              <span className="shrink-0 text-right">
+                <span className="block font-display text-lg">{money(row.amount, row.currency)}</span>
+                {row.original_currency && row.original_amount != null && row.exchange_rate != null ? (
+                  <span className="block text-[11px] text-ink/45">
+                    {money(row.original_amount, row.original_currency)} × {Number(row.exchange_rate).toFixed(4)}
+                  </span>
+                ) : null}
+              </span>
               <button
                 type="button"
                 onClick={() => remove(row)}

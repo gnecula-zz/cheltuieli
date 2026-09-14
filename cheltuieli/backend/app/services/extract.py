@@ -113,6 +113,15 @@ def _first_nonempty_line(text: str) -> str:
     return ""
 
 
+def _guess_currency(text: str) -> str:
+    lower = f" {text.lower()} "
+    if "€" in text or " eur" in lower or "euro" in lower:
+        return "EUR"
+    if " usd" in lower or "$" in text:
+        return "USD"
+    return "RON"
+
+
 def parse_text_document(text: str, filename: str) -> tuple[str, list[dict]]:
     doc_type = detect_doc_type(text, filename)
     cui_match = CUI_RE.search(text)
@@ -134,7 +143,7 @@ def parse_text_document(text: str, filename: str) -> tuple[str, list[dict]]:
         "merchant": merchant,
         "description": "Factură" if doc_type == "factura" else "Bon fiscal",
         "amount": float(amount) if amount is not None else None,
-        "currency": "EUR" if " eur" in text.lower() else "RON",
+        "currency": _guess_currency(text),
         "vat_amount": float(vat) if vat is not None else None,
         "invoice_number": invoice_number,
         "cui": cui,
@@ -206,6 +215,7 @@ def _parse_statement_lines(text: str, payment: str) -> list[dict]:
             continue
         merchant = DATE_RE.sub("", line)
         merchant = amount_on_line.sub("", merchant)
+        currency = _guess_currency(line)
         merchant = re.sub(r"\b(RON|EUR|USD|debit|card|lei)\b", "", merchant, flags=re.I)
         merchant = re.sub(r"\s+", " ", merchant).strip(" -–|")[:200]
         if not merchant:
@@ -216,7 +226,7 @@ def _parse_statement_lines(text: str, payment: str) -> list[dict]:
                 "merchant": merchant,
                 "description": "Tranzacție extras",
                 "amount": float(amount),
-                "currency": "RON",
+                "currency": currency,
                 "vat_amount": None,
                 "invoice_number": "",
                 "cui": "",
@@ -287,13 +297,18 @@ def normalize_items(raw_items: list[dict], fallback_source: str, db: Session) ->
         description = str(raw.get("description") or "")[:400]
         source = str(raw.get("source") or fallback_source)
         category_id = suggest_category_id(db, merchant, description)
+        currency = str(raw.get("currency") or "RON").strip().upper()
+        if currency in {"LEI", "LEU"}:
+            currency = "RON"
+        elif currency in {"EURO", "€"}:
+            currency = "EUR"
         normalized.append(
             {
                 "date": parsed_date.isoformat() if parsed_date else None,
                 "merchant": merchant,
                 "description": description,
                 "amount": float(amount_dec) if amount_dec is not None else None,
-                "currency": str(raw.get("currency") or "RON")[:8],
+                "currency": currency[:8] or "RON",
                 "vat_amount": float(vat_dec) if vat_dec is not None else None,
                 "payment_method": str(raw.get("payment_method") or "card"),
                 "is_shared": bool(raw.get("is_shared", False)),

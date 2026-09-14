@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.addon_options import apply_addon_options, apply_ai_options
 from app.config import settings
 from app.database import Base, SessionLocal, engine, ensure_sqlite_schema
-from app.routers import auth, budgets, categories, documents, expenses, reports, settings as settings_router, users
+from app.routers import auth, budgets, categories, documents, expenses, fx, reports, settings as settings_router, users
 from app.seed import seed_categories
 from app.services.ai import get_or_create_config
 from app.spa import frontend_root, spa_file
@@ -57,6 +57,7 @@ app.include_router(users.router, prefix="/api")
 app.include_router(categories.router, prefix="/api")
 app.include_router(expenses.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
+app.include_router(fx.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(budgets.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")

@@ -116,6 +116,10 @@ class ExpenseBase(BaseModel):
     category_id: int | None = None
     invoice_number: str = ""
     cui: str = ""
+    original_amount: Decimal | None = None
+    original_currency: str | None = None
+    exchange_rate: Decimal | None = None
+    exchange_rate_date: Date | None = None
 
 
 class ExpenseCreate(ExpenseBase):
@@ -135,6 +139,10 @@ class ExpenseUpdate(BaseModel):
     category_id: int | None = None
     invoice_number: str | None = None
     cui: str | None = None
+    original_amount: Decimal | None = None
+    original_currency: str | None = None
+    exchange_rate: Decimal | None = None
+    exchange_rate_date: Date | None = None
 
 
 class ExpensePublic(ExpenseBase):
@@ -213,8 +221,10 @@ class ExtractedItem(BaseModel):
     @classmethod
     def _currency(cls, value: object) -> str:
         text = str(value or "RON").strip().upper()
-        if text in {"LEI", "RON"}:
+        if text in {"LEI", "RON", "LEU"}:
             return "RON"
+        if text in {"EURO", "€"}:
+            return "EUR"
         return (text or "RON")[:8]
 
 
