@@ -40,10 +40,20 @@ def ensure_sqlite_schema() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
     inspector = inspect(engine)
-    if "users" not in inspector.get_table_names():
-        return
-    columns = {col["name"] for col in inspector.get_columns("users")}
+    tables = set(inspector.get_table_names())
     with engine.begin() as conn:
-        if "ha_user_id" not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN ha_user_id VARCHAR(64)"))
-            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_ha_user_id ON users (ha_user_id)"))
+        if "users" in tables:
+            columns = {col["name"] for col in inspector.get_columns("users")}
+            if "ha_user_id" not in columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN ha_user_id VARCHAR(64)"))
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_ha_user_id ON users (ha_user_id)"))
+        if "expenses" in tables:
+            columns = {col["name"] for col in inspector.get_columns("expenses")}
+            if "original_amount" not in columns:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN original_amount NUMERIC(12, 2)"))
+            if "original_currency" not in columns:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN original_currency VARCHAR(8)"))
+            if "exchange_rate" not in columns:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN exchange_rate NUMERIC(12, 6)"))
+            if "exchange_rate_date" not in columns:
+                conn.execute(text("ALTER TABLE expenses ADD COLUMN exchange_rate_date DATE"))

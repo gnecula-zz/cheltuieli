@@ -17,6 +17,7 @@ from app.models import Category, Document, Expense, User
 from app.routers.expenses import to_public, visible_query
 from app.schemas import ConfirmImportRequest, DocumentExtractResponse, ExpensePublic, ExtractedItem
 from app.services.ai import is_ai_configured
+from app.services.bnr import BnrRateError, convert_to_ron
 from app.services.extract import extract_file
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -214,16 +215,49 @@ def confirm_document(
         category_id = item.category_id
         if category_id and db.get(Category, category_id) is None:
             category_id = None
+
+        currency = (item.currency or "RON").strip().upper()
+        if currency in {"LEI", "LEU"}:
+            currency = "RON"
+        original_amount = Decimal(item.amount)
+        vat_amount = item.vat_amount
+        exchange_rate = None
+        exchange_rate_date = None
+        stored_amount = original_amount
+        stored_currency = currency
+        persisted_original_amount = None
+        persisted_original_currency = None
+
+        if currency != "RON":
+            try:
+                stored_amount, rate = convert_to_ron(original_amount, currency)
+            except BnrRateError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            stored_currency = "RON"
+            exchange_rate = rate.ron_per_unit
+            exchange_rate_date = rate.rate_date
+            persisted_original_amount = original_amount
+            persisted_original_currency = currency
+            if vat_amount is not None:
+                try:
+                    vat_amount, _ = convert_to_ron(Decimal(vat_amount), currency)
+                except BnrRateError as exc:
+                    raise HTTPException(status_code=502, detail=str(exc)) from exc
+
         expense = Expense(
             user_id=user.id,
             category_id=category_id,
             document_id=document.id,
-            amount=Decimal(item.amount),
-            currency=(item.currency or "RON")[:8],
+            amount=stored_amount,
+            currency=stored_currency,
+            original_amount=persisted_original_amount,
+            original_currency=persisted_original_currency,
+            exchange_rate=exchange_rate,
+            exchange_rate_date=exchange_rate_date,
             date=item.date or date.today(),
             merchant=(item.merchant or "").strip()[:200],
             description=(item.description or "").strip()[:400],
-            vat_amount=item.vat_amount,
+            vat_amount=vat_amount,
             payment_method=item.payment_method if item.payment_method in {"card", "numerar"} else "card",
             is_shared=item.is_shared,
             source=item.source if item.source in {"manual", "bon", "extras", "factura"} else document.doc_type,

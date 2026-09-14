@@ -1,19 +1,50 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, FileUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
 import { api, ApiError } from "../lib/api";
 import { compressImage } from "../lib/image";
 import { money, todayIso } from "../lib/format";
-import type { ExtractedItem, ExtractResponse } from "../lib/types";
+import type { BnrRate, ExtractedItem, ExtractResponse } from "../lib/types";
 import { inputClass } from "../components/Modal";
 
 function hydrateItems(data: ExtractResponse): ExtractedItem[] {
   return (data.items || []).map((item) => ({
     ...item,
     date: item.date || todayIso(),
+    currency: (item.currency || "RON").toUpperCase() === "LEI" ? "RON" : (item.currency || "RON").toUpperCase(),
     selected: item.selected !== false,
   }));
+}
+
+function parseAmountInput(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(String(value).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+function ConversionHint({
+  amount,
+  currency,
+  rate,
+  rateError,
+}: {
+  amount: number | string | null;
+  currency: string;
+  rate: BnrRate | null;
+  rateError: string;
+}) {
+  if (currency !== "EUR") return null;
+  if (rateError) return <p className="text-xs text-clay">{rateError}</p>;
+  if (!rate) return <p className="text-xs text-ink/45">Se încarcă cursul BNR…</p>;
+  const value = parseAmountInput(amount);
+  if (value == null) return <p className="text-xs text-ink/45">Curs BNR EUR: {rate.rate.toFixed(4)} ({rate.rate_date})</p>;
+  const ron = value * rate.rate;
+  return (
+    <p className="text-xs text-ink/55">
+      {money(value, "EUR")} × {rate.rate.toFixed(4)} curs BNR ({rate.rate_date}) = {money(ron, "RON")}
+    </p>
+  );
 }
 
 export default function ImportPage() {
@@ -25,7 +56,11 @@ export default function ImportPage() {
   const [items, setItems] = useState<ExtractedItem[]>([]);
   const [drafts, setDrafts] = useState<ExtractResponse[]>([]);
   const [drag, setDrag] = useState(false);
+  const [eurRate, setEurRate] = useState<BnrRate | null>(null);
+  const [rateError, setRateError] = useState("");
   const uploadGen = useRef(0);
+
+  const needsEurRate = useMemo(() => items.some((item) => item.selected && (item.currency || "RON").toUpperCase() === "EUR"), [items]);
 
   const loadDrafts = () => {
     api<ExtractResponse[]>("/documents")
@@ -36,6 +71,25 @@ export default function ImportPage() {
   useEffect(() => {
     loadDrafts();
   }, []);
+
+  useEffect(() => {
+    if (!needsEurRate) return;
+    let cancelled = false;
+    setRateError("");
+    api<BnrRate>("/fx/bnr?currency=EUR")
+      .then((data) => {
+        if (!cancelled) setEurRate(data);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setEurRate(null);
+          setRateError(err instanceof ApiError ? err.message : "Nu am putut prelua cursul BNR.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsEurRate, result?.document_id]);
 
   const showExtract = (data: ExtractResponse) => {
     setResult(data);
@@ -93,6 +147,10 @@ export default function ImportPage() {
 
   const confirm = async () => {
     if (!result) return;
+    if (needsEurRate && rateError) {
+      setError(rateError);
+      return;
+    }
     const documentId = result.document_id;
     const payloadItems = items;
     setBusy(true);
@@ -101,6 +159,7 @@ export default function ImportPage() {
       const payload = {
         items: payloadItems.map((item) => ({
           ...item,
+          currency: (item.currency || "RON").toUpperCase(),
           amount: item.amount == null || item.amount === "" ? null : Number(String(item.amount).replace(",", ".")),
           vat_amount:
             item.vat_amount == null || item.vat_amount === ""
@@ -134,6 +193,7 @@ export default function ImportPage() {
         <h1 className="font-display text-3xl">Bonuri și PDF-uri</h1>
         <p className="mt-1 text-sm text-ink/60">
           PDF-urile cu text se citesc local. Pozele de bonuri și scanurile folosesc agentul AI din Setări, dacă e cheia configurată.
+          Sumele în euro se convertesc în lei la cursul BNR din ziua curentă.
         </p>
       </div>
 
@@ -205,6 +265,7 @@ export default function ImportPage() {
             {drafts.map((doc) => {
               const hint = doc.items.find((item) => item.merchant)?.merchant || doc.filename;
               const amount = doc.items.find((item) => item.amount != null && item.amount !== "")?.amount;
+              const currency = doc.items.find((item) => item.amount != null && item.amount !== "")?.currency || "RON";
               return (
                 <li key={doc.document_id} className="flex items-stretch gap-2">
                   <button
@@ -216,7 +277,7 @@ export default function ImportPage() {
                     }}
                   >
                     <span className="truncate font-medium">{hint}</span>
-                    <span className="shrink-0 text-sm text-ink/55">{amount ? money(amount) : `${doc.items.length} rânduri`}</span>
+                    <span className="shrink-0 text-sm text-ink/55">{amount ? money(amount, currency) : `${doc.items.length} rânduri`}</span>
                   </button>
                   <button
                     type="button"
@@ -266,6 +327,12 @@ export default function ImportPage() {
             </div>
           </div>
           {result.warning ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{result.warning}</p> : null}
+          {needsEurRate && eurRate ? (
+            <p className="rounded-2xl bg-forest/5 px-4 py-3 text-sm text-forest">
+              Curs BNR EUR din {eurRate.rate_date}: <strong>{eurRate.rate.toFixed(4)} lei</strong>. La salvare, sumele în euro se convertesc în RON.
+            </p>
+          ) : null}
+          {needsEurRate && rateError ? <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{rateError}</p> : null}
 
           <div className="hidden overflow-x-auto rounded-2xl bg-paper shadow-card md:block">
             <table className="min-w-full text-left text-sm">
@@ -275,13 +342,14 @@ export default function ImportPage() {
                   <th className="p-3">Dată</th>
                   <th className="p-3">Comerciant</th>
                   <th className="p-3">Sumă</th>
+                  <th className="p-3">Monedă</th>
                   <th className="p-3">Categorie</th>
                   <th className="p-3">Comună</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item, index) => (
-                  <tr key={index} className="border-t border-black/5">
+                  <tr key={index} className="border-t border-black/5 align-top">
                     <td className="p-3">
                       <input type="checkbox" className="size-5 accent-forest" checked={item.selected} onChange={(e) => update(index, { selected: e.target.checked })} />
                     </td>
@@ -293,6 +361,15 @@ export default function ImportPage() {
                     </td>
                     <td className="p-2">
                       <input className={inputClass} inputMode="decimal" value={item.amount ?? ""} onChange={(e) => update(index, { amount: e.target.value })} />
+                      <div className="mt-1">
+                        <ConversionHint amount={item.amount} currency={(item.currency || "RON").toUpperCase()} rate={eurRate} rateError={rateError} />
+                      </div>
+                    </td>
+                    <td className="p-2">
+                      <select className={inputClass} value={(item.currency || "RON").toUpperCase()} onChange={(e) => update(index, { currency: e.target.value })}>
+                        <option value="RON">RON (lei)</option>
+                        <option value="EUR">EUR</option>
+                      </select>
                     </td>
                     <td className="p-2">
                       <select className={inputClass} value={item.category_id ?? ""} onChange={(e) => update(index, { category_id: e.target.value ? Number(e.target.value) : null })}>
@@ -323,7 +400,14 @@ export default function ImportPage() {
                 <div className="mt-3 space-y-2">
                   <input type="date" className={inputClass} value={item.date || ""} onChange={(e) => update(index, { date: e.target.value })} />
                   <input className={inputClass} placeholder="Comerciant" value={item.merchant} onChange={(e) => update(index, { merchant: e.target.value })} />
-                  <input className={inputClass} inputMode="decimal" placeholder="Sumă" value={item.amount ?? ""} onChange={(e) => update(index, { amount: e.target.value })} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input className={inputClass} inputMode="decimal" placeholder="Sumă" value={item.amount ?? ""} onChange={(e) => update(index, { amount: e.target.value })} />
+                    <select className={inputClass} value={(item.currency || "RON").toUpperCase()} onChange={(e) => update(index, { currency: e.target.value })}>
+                      <option value="RON">RON (lei)</option>
+                      <option value="EUR">EUR</option>
+                    </select>
+                  </div>
+                  <ConversionHint amount={item.amount} currency={(item.currency || "RON").toUpperCase()} rate={eurRate} rateError={rateError} />
                   <select className={inputClass} value={item.category_id ?? ""} onChange={(e) => update(index, { category_id: e.target.value ? Number(e.target.value) : null })}>
                     <option value="">Categorie</option>
                     {categories.map((c) => (
@@ -336,7 +420,6 @@ export default function ImportPage() {
                     <input type="checkbox" className="size-5 accent-forest" checked={item.is_shared} onChange={(e) => update(index, { is_shared: e.target.checked })} />
                     Comună
                   </label>
-                  {item.amount ? <p className="text-xs text-ink/45">{money(item.amount, item.currency)}</p> : null}
                 </div>
               </li>
             ))}
